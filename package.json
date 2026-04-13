@@ -1,0 +1,16 @@
+{
+  "name": "voicepool",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ElevenLabs fleet dashboard — track usage and resets across multiple free accounts",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:frontend\"",
+    "dev:api": "cd api && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build": "cd api && npm run build && cd ../frontend && npm run build",
+    "install:all": "cd api && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
