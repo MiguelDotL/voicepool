@@ -1,121 +1,150 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  fetchAccounts,
+  deleteAccount,
+  refreshAccounts,
+  type Account,
+} from "./api";
+import { formatRelativeTime } from "./format";
+import AddAccountForm from "./components/AddAccountForm";
+import DashboardTable from "./components/DashboardTable";
+import EmptyState from "./components/EmptyState";
+
+const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
+  const [relativeTime, setRelativeTime] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // --- Load accounts on mount ---
+  const loadAccounts = useCallback(async () => {
+    try {
+      const data = await fetchAccounts();
+      setAccounts(data);
+    } catch {
+      // Silently fail on initial load — empty state will show
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAccounts();
+  }, [loadAccounts]);
+
+  // --- Refresh handler ---
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const result = await refreshAccounts();
+      setAccounts(result.accounts);
+      setLastRefreshed(Date.now());
+    } catch {
+      // Refresh failed — keep existing data
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
+  // --- Auto-refresh polling ---
+  useEffect(() => {
+    pollRef.current = setInterval(() => {
+      void handleRefresh();
+    }, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [handleRefresh]);
+
+  // --- Tick the "last refreshed" display every 15s ---
+  useEffect(() => {
+    if (lastRefreshed === null) return;
+
+    const tick = () => setRelativeTime(formatRelativeTime(lastRefreshed));
+    tick();
+    const id = setInterval(tick, 15_000);
+    return () => clearInterval(id);
+  }, [lastRefreshed]);
+
+  // --- Add account callback ---
+  const handleAccountAdded = useCallback((account: Account) => {
+    setAccounts((prev) => [...prev, account]);
+  }, []);
+
+  // --- Delete account callback ---
+  const handleDelete = useCallback(async (id: number) => {
+    try {
+      await deleteAccount(id);
+      setAccounts((prev) => prev.filter((a) => a.id !== id));
+    } catch {
+      // Failed to delete — keep in list
+    }
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-gray-300 flex items-center justify-center">
+        <span className="text-gray-500 text-sm">Loading...</span>
+      </div>
+    );
+  }
+
+  const hasAccounts = accounts.length > 0;
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="min-h-screen bg-gray-950 text-gray-300">
+      {/* Header */}
+      <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-gray-100 tracking-tight">
+          voicepool
+        </h1>
+        <div className="flex items-center gap-4">
+          {lastRefreshed !== null && (
+            <span className="text-xs text-gray-500">
+              Refreshed {relativeTime}
+            </span>
+          )}
+          <span className="text-xs text-gray-600">
+            auto-refresh: 5m
+          </span>
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
+            className="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {refreshing ? "Refreshing..." : "Refresh All"}
+          </button>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
+      {/* Main content */}
+      <main className="max-w-6xl mx-auto px-6 py-6">
+        {hasAccounts ? (
+          <div className="space-y-6">
+            {/* Add form — compact when accounts exist */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+              <AddAccountForm onAccountAdded={handleAccountAdded} />
+            </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+            {/* Dashboard table */}
+            <div className="bg-gray-900 border border-gray-800 rounded-lg">
+              <DashboardTable
+                accounts={accounts}
+                onDelete={handleDelete}
+              />
+            </div>
+          </div>
+        ) : (
+          <EmptyState onAccountAdded={handleAccountAdded} />
+        )}
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;
