@@ -8,6 +8,12 @@ export interface ElevenLabsSubscription {
   status: string;
 }
 
+export interface ElevenLabsUserInfo {
+  first_name: string;
+  user_id: string;
+  subscription: ElevenLabsSubscription;
+}
+
 export class ElevenLabsError extends Error {
   constructor(
     message: string,
@@ -19,12 +25,13 @@ export class ElevenLabsError extends Error {
 }
 
 /**
- * Fetch subscription/usage data from ElevenLabs for a given API key.
+ * Fetch user info + subscription data from ElevenLabs for a given API key.
+ * Uses /v1/user which includes both profile info and subscription details.
  */
-export async function getSubscription(
+export async function getUserInfo(
   apiKey: string
-): Promise<ElevenLabsSubscription> {
-  const res = await fetch(`${EL_BASE_URL}/user/subscription`, {
+): Promise<ElevenLabsUserInfo> {
+  const res = await fetch(`${EL_BASE_URL}/user`, {
     headers: { "xi-api-key": apiKey },
   });
 
@@ -42,13 +49,18 @@ export async function getSubscription(
   }
 
   const data = (await res.json()) as Record<string, unknown>;
+  const sub = data.subscription as Record<string, unknown>;
 
   return {
-    tier: data.tier as string,
-    character_count: data.character_count as number,
-    character_limit: data.character_limit as number,
-    next_character_count_reset_unix:
-      data.next_character_count_reset_unix as number,
-    status: (data.status as string) ?? "active",
+    first_name: (data.first_name as string) ?? "",
+    user_id: (data.user_id as string) ?? "",
+    subscription: {
+      tier: sub.tier as string,
+      character_count: sub.character_count as number,
+      character_limit: sub.character_limit as number,
+      next_character_count_reset_unix:
+        sub.next_character_count_reset_unix as number,
+      status: (sub.status as string) ?? "active",
+    },
   };
 }

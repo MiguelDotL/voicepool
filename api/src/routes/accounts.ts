@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { run, runChanges, query, queryOne } from "../db/index.js";
 import { encrypt, decrypt } from "../services/encryption.js";
 import {
-  getSubscription,
+  getUserInfo,
   ElevenLabsError,
 } from "../services/elevenlabs.js";
 
@@ -83,15 +83,15 @@ function insertSnapshot(
 router.post("/", async (req: Request, res: Response): Promise<void> => {
   const { label, apiKey } = req.body as { label?: string; apiKey?: string };
 
-  if (!label || !apiKey) {
-    res.status(400).json({ error: "label and apiKey are required" });
+  if (!apiKey) {
+    res.status(400).json({ error: "apiKey is required" });
     return;
   }
 
-  // Validate the key against ElevenLabs
-  let subscription;
+  // Validate the key against ElevenLabs and fetch user info
+  let userInfo;
   try {
-    subscription = await getSubscription(apiKey);
+    userInfo = await getUserInfo(apiKey);
   } catch (err) {
     if (err instanceof ElevenLabsError) {
       res.status(err.statusCode).json({ error: err.message });
@@ -101,12 +101,17 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
+  // Use provided label or fall back to first_name from ElevenLabs
+  const resolvedLabel = label?.trim() || userInfo.first_name || "Unnamed";
+
   // Encrypt and store
   const encryptedKey = encrypt(apiKey);
   const accountId = run(
     "INSERT INTO accounts (label, api_key) VALUES (?, ?)",
-    [label, encryptedKey]
+    [resolvedLabel, encryptedKey]
   );
+
+  const subscription = userInfo.subscription;
 
   // Store initial usage snapshot
   insertSnapshot(accountId, {
@@ -121,7 +126,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
 
   res.status(201).json({
     id: accountId,
-    label,
+    label: resolvedLabel,
     created_at: new Date().toISOString(),
     usage,
   });
@@ -191,7 +196,8 @@ router.post("/refresh", async (_req: Request, res: Response): Promise<void> => {
     }
 
     try {
-      const sub = await getSubscription(apiKey);
+      const info = await getUserInfo(apiKey);
+      const sub = info.subscription;
       insertSnapshot(row.id, {
         character_count: sub.character_count,
         character_limit: sub.character_limit,

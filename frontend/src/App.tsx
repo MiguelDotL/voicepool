@@ -73,7 +73,11 @@ function App() {
 
   // --- Add account callback ---
   const handleAccountAdded = useCallback((account: Account) => {
-    setAccounts((prev) => [...prev, account]);
+    setAccounts((prev) => {
+      // Prevent duplicates if a refresh landed between the POST and this update
+      if (prev.some((a) => a.id === account.id)) return prev;
+      return [...prev, account];
+    });
   }, []);
 
   // --- Delete account callback ---

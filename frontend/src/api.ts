@@ -48,14 +48,11 @@ export async function fetchAccounts(): Promise<Account[]> {
   return handleResponse<Account[]>(res);
 }
 
-export async function addAccount(
-  label: string,
-  apiKey: string,
-): Promise<Account> {
+export async function addAccount(apiKey: string): Promise<Account> {
   const res = await fetch("/api/accounts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ label, apiKey }),
+    body: JSON.stringify({ apiKey }),
   });
   return handleResponse<Account>(res);
 }
