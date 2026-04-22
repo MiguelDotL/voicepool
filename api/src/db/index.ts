@@ -105,6 +105,19 @@ export function query<T = Record<string, unknown>>(
   return rows;
 }
 
+export function pruneOldSnapshots(accountId: number): void {
+  db.run(
+    `DELETE FROM usage_snapshots
+     WHERE account_id = ?
+     AND fetched_at < datetime('now', '-30 days')
+     AND id NOT IN (
+       SELECT id FROM usage_snapshots WHERE account_id = ? ORDER BY fetched_at DESC LIMIT 1
+     )`,
+    [accountId, accountId]
+  );
+  save();
+}
+
 /**
  * Query a single row. Returns the row or undefined.
  */

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { run, runChanges, query, queryOne } from "../db/index.js";
+import { run, runChanges, query, queryOne, pruneOldSnapshots } from "../db/index.js";
 import { encrypt, decrypt } from "../services/encryption.js";
 import {
   getUserInfo,
@@ -12,7 +12,7 @@ const router = Router();
 // Types
 // ---------------------------------------------------------------------------
 
-interface AccountRow {
+export interface AccountRow {
   id: number;
   label: string;
   api_key: string;
@@ -39,7 +39,7 @@ interface AccountWithUsage {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function latestSnapshotForAccount(accountId: number): SnapshotRow | null {
+export function latestSnapshotForAccount(accountId: number): SnapshotRow | null {
   return (
     queryOne<SnapshotRow>(
       `SELECT character_count, character_limit, next_reset_unix, tier, status, fetched_at
@@ -52,7 +52,7 @@ function latestSnapshotForAccount(accountId: number): SnapshotRow | null {
   );
 }
 
-function insertSnapshot(
+export function insertSnapshot(
   accountId: number,
   data: {
     character_count: number;
@@ -74,6 +74,7 @@ function insertSnapshot(
       data.status,
     ]
   );
+  pruneOldSnapshots(accountId);
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +196,7 @@ router.post("/refresh", async (_req: Request, res: Response): Promise<void> => {
       continue;
     }
 
+    let currentLabel = row.label;
     try {
       const info = await getUserInfo(apiKey);
       const sub = info.subscription;
@@ -205,6 +207,11 @@ router.post("/refresh", async (_req: Request, res: Response): Promise<void> => {
         tier: sub.tier,
         status: sub.status,
       });
+      // Sync label from ElevenLabs
+      if (info.first_name) {
+        run("UPDATE accounts SET label = ? WHERE id = ?", [info.first_name, row.id]);
+        currentLabel = info.first_name;
+      }
     } catch (err) {
       const message =
         err instanceof ElevenLabsError
@@ -215,13 +222,46 @@ router.post("/refresh", async (_req: Request, res: Response): Promise<void> => {
 
     results.push({
       id: row.id,
-      label: row.label,
+      label: currentLabel,
       created_at: row.created_at,
       usage: latestSnapshotForAccount(row.id),
     });
   }
 
   res.json({ accounts: results, errors });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/accounts/available?chars=N — List accounts with remaining capacity
+// ---------------------------------------------------------------------------
+
+router.get("/available", (req: Request, res: Response): void => {
+  const chars = Number(req.query.chars ?? 0);
+  const now = Math.floor(Date.now() / 1000);
+
+  const rows = query<AccountRow>("SELECT id, label, api_key, created_at FROM accounts ORDER BY id");
+
+  const result = rows.map((row) => {
+    const snap = latestSnapshotForAccount(row.id);
+    if (!snap) return { id: row.id, label: row.label, remaining: null, fits: false };
+
+    const remaining = now >= snap.next_reset_unix
+      ? snap.character_limit
+      : snap.character_limit - snap.character_count;
+
+    return {
+      id: row.id,
+      label: row.label,
+      remaining,
+      character_limit: snap.character_limit,
+      fits: !isNaN(chars) && remaining >= chars,
+      next_reset_unix: snap.next_reset_unix,
+      tier: snap.tier,
+      status: snap.status,
+    };
+  }).sort((a, b) => (a.remaining ?? -1) - (b.remaining ?? -1));
+
+  res.json(result);
 });
 
 export default router;
