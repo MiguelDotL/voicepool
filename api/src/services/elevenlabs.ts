@@ -59,8 +59,17 @@ export async function synthesize(params: SynthesizeParams): Promise<Buffer> {
 
   if (!res.ok) {
     if (res.status === 401) throw new ElevenLabsError("Invalid API key", 401);
-    if (res.status === 422) throw new ElevenLabsError("Voice not available on this account", 422);
     if (res.status === 429) throw new ElevenLabsError("Rate limited by ElevenLabs API", 429);
+    if (res.status === 422) {
+      // Only mark voice unavailable if EL explicitly says the voice doesn't exist
+      let body: Record<string, unknown> = {};
+      try { body = await res.json() as Record<string, unknown>; } catch { /* ignore */ }
+      const detail = String(body.detail ?? "");
+      if (detail.toLowerCase().includes("voice")) {
+        throw new ElevenLabsError("Voice not available on this account", 422);
+      }
+      throw new ElevenLabsError(`ElevenLabs TTS error: 422 ${detail || res.statusText}`, 400);
+    }
     throw new ElevenLabsError(`ElevenLabs TTS error: ${res.status} ${res.statusText}`, res.status);
   }
 

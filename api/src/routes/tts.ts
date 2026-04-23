@@ -47,6 +47,7 @@ interface CandidateAccount {
   next_reset_unix: number;
   tier: string;
   status: string;
+  resolvedVoiceId: string;
 }
 
 async function withAccountMutex<T>(accountId: number, fn: () => Promise<T>): Promise<T> {
@@ -62,7 +63,7 @@ async function withAccountMutex<T>(accountId: number, fn: () => Promise<T>): Pro
   }
 }
 
-function getCandidates(textLength: number, voiceId: string): CandidateAccount[] {
+function getCandidates(textLength: number, voiceId?: string, voiceName?: string): CandidateAccount[] {
   const now = Math.floor(Date.now() / 1000);
   const rows = query<AccountRow>("SELECT id, label, api_key, created_at FROM accounts ORDER BY id");
 
@@ -72,7 +73,19 @@ function getCandidates(textLength: number, voiceId: string): CandidateAccount[] 
     const bl = blacklist.get(row.id);
     if (bl && bl.until > now) continue;
 
-    if (voiceUnavailable.has(`${row.id}:${voiceId}`)) continue;
+    let resolvedVoiceId: string;
+    if (voiceName) {
+      const mapping = queryOne<{ voice_id: string }>(
+        `SELECT voice_id FROM account_voices WHERE account_id = ? AND voice_name = ?`,
+        [row.id, voiceName]
+      );
+      if (!mapping) continue;
+      resolvedVoiceId = mapping.voice_id;
+    } else {
+      resolvedVoiceId = voiceId!;
+    }
+
+    if (voiceUnavailable.has(`${row.id}:${resolvedVoiceId}`)) continue;
 
     const snap = queryOne<SnapshotRow>(
       `SELECT character_count, character_limit, next_reset_unix, tier, status, fetched_at
@@ -105,6 +118,7 @@ function getCandidates(textLength: number, voiceId: string): CandidateAccount[] 
       next_reset_unix: snap.next_reset_unix,
       tier: snap.tier,
       status: snap.status,
+      resolvedVoiceId,
     });
   }
 
@@ -117,9 +131,10 @@ function getCandidates(textLength: number, voiceId: string): CandidateAccount[] 
 // ---------------------------------------------------------------------------
 
 router.post("/", async (req: Request, res: Response): Promise<void> => {
-  const { voice_id, text, model_id, account_id, output_format, voice_settings } =
+  const { voice_id, voice_name, text, model_id, account_id, output_format, voice_settings } =
     req.body as {
       voice_id?: string;
+      voice_name?: string;
       text?: string;
       model_id?: string;
       account_id?: number;
@@ -127,7 +142,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       voice_settings?: Record<string, unknown>;
     };
 
-  if (!voice_id || !text) {
+  if (!text || (!voice_id && !voice_name)) {
     res.status(400).json({ error: "missing_fields" });
     return;
   }
@@ -163,10 +178,23 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    let resolvedVoiceId = voice_id;
+    if (!resolvedVoiceId && voice_name) {
+      const mapping = queryOne<{ voice_id: string }>(
+        `SELECT voice_id FROM account_voices WHERE account_id = ? AND voice_name = ?`,
+        [row.id, voice_name]
+      );
+      if (!mapping) {
+        res.status(404).json({ error: "voice_mapping_not_found" });
+        return;
+      }
+      resolvedVoiceId = mapping.voice_id;
+    }
+
     let audio: Buffer;
     try {
       audio = await withAccountMutex(row.id, () =>
-        synthesize({ apiKey, voiceId: voice_id, text, modelId: model_id, voiceSettings: voice_settings, outputFormat: output_format })
+        synthesize({ apiKey, voiceId: resolvedVoiceId!, text, modelId: model_id, voiceSettings: voice_settings, outputFormat: output_format })
       );
     } catch (err) {
       if (err instanceof ElevenLabsError) {
@@ -197,7 +225,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  const candidates = getCandidates(text.length, voice_id);
+  const candidates = getCandidates(text.length, voice_id, voice_name);
   if (candidates.length === 0) {
     const now = Math.floor(Date.now() / 1000);
     const nextReset = findEarliestReset(now);
@@ -219,7 +247,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
       const result = await withAccountMutex(candidate.id, () =>
         synthesize({
           apiKey: candidate.apiKey,
-          voiceId: voice_id,
+          voiceId: candidate.resolvedVoiceId,
           text,
           modelId: model_id,
           voiceSettings: voice_settings,
@@ -237,7 +265,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
           continue;
         }
         if (err.statusCode === 422) {
-          voiceUnavailable.add(`${candidate.id}:${voice_id}`);
+          voiceUnavailable.add(`${candidate.id}:${candidate.resolvedVoiceId}`);
           continue;
         }
         if (err.statusCode === 429) {
@@ -256,7 +284,7 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
   }
 
   if (!audio || usedAccountId === null) {
-    const remainingCandidates = getCandidates(text.length, voice_id);
+    const remainingCandidates = getCandidates(text.length, voice_id, voice_name);
     if (remainingCandidates.length === 0) {
       res.status(429).json({ error: "pool_exhausted" });
     } else {

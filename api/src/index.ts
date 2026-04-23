@@ -8,6 +8,7 @@ import cors from "cors";
 import { initDatabase, query } from "./db/index.js";
 import accountsRouter from "./routes/accounts.js";
 import ttsRouter from "./routes/tts.js";
+import voicesRouter from "./routes/voices.js";
 
 const PORT = Number(process.env.PORT) || 3500;
 
@@ -40,6 +41,7 @@ async function main(): Promise<void> {
 
   app.use("/api/accounts", accountsRouter);
   app.use("/api/tts", ttsRouter);
+  app.use("/api/voices", voicesRouter);
 
   app.get("/api/health", (_req, res) => {
     const rows = query<{ c: number }>("SELECT COUNT(*) as c FROM accounts");

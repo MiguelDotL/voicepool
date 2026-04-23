@@ -60,6 +60,22 @@ export async function initDatabase(): Promise<void> {
       ON usage_snapshots(fetched_at);
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS account_voices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL,
+      voice_name TEXT NOT NULL,
+      voice_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+      UNIQUE(account_id, voice_name)
+    );
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_account_voices_account_id ON account_voices(account_id);
+  `);
+
   db.run("PRAGMA foreign_keys = ON;");
 
   save();
