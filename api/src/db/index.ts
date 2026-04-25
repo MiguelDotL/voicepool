@@ -76,6 +76,8 @@ export async function initDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_account_voices_account_id ON account_voices(account_id);
   `);
 
+  db.run(`DROP TABLE IF EXISTS mailboxes;`);
+
   db.run("PRAGMA foreign_keys = ON;");
 
   save();
@@ -87,9 +89,9 @@ export async function initDatabase(): Promise<void> {
  */
 export function run(sql: string, params: unknown[] = []): number {
   db.run(sql, params);
-  save();
-  // Get last insert rowid
+  // Get last insert rowid — read before save() so db.export() doesn't reset last_insert_rowid
   const result = db.exec("SELECT last_insert_rowid() as id");
+  save();
   return result.length > 0 ? (result[0].values[0][0] as number) : 0;
 }
 
@@ -98,8 +100,9 @@ export function run(sql: string, params: unknown[] = []): number {
  */
 export function runChanges(sql: string, params: unknown[] = []): number {
   db.run(sql, params);
-  save();
+  // Read changes() before save() for the same reason as run()
   const result = db.exec("SELECT changes() as c");
+  save();
   return result.length > 0 ? (result[0].values[0][0] as number) : 0;
 }
 
