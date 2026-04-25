@@ -92,7 +92,7 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-gray-300 flex items-center justify-center">
+      <div className="min-h-screen bg-[#0e1014] text-gray-400 flex items-center justify-center">
         <span className="text-gray-500 text-sm">Loading...</span>
       </div>
     );
@@ -101,42 +101,47 @@ function App() {
   const hasAccounts = accounts.length > 0;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-300">
+    <div className="min-h-screen bg-[#0e1014] text-gray-400">
       {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-100 tracking-tight">
-          voicepool
-        </h1>
-        <div className="flex items-center gap-4">
-          {lastRefreshed !== null && (
-            <span className="text-xs text-gray-500">
-              Refreshed {relativeTime}
-            </span>
-          )}
-          <span className="text-xs text-gray-600">
-            auto-refresh: 5m
+      <header className="border-b border-white/[0.05] backdrop-blur supports-[backdrop-filter]:bg-[#0e1014]/80 sticky top-0 z-20 px-6 py-3.5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2 h-2 rounded-full bg-teal-300/70 shadow-[0_0_8px_rgba(94,234,212,0.3)]" />
+          <h1 className="text-base font-semibold text-gray-200 tracking-tight">
+            voicepool
+          </h1>
+        </div>
+        <div className="flex items-center gap-3 text-xs">
+          <span className="text-gray-500" title="Auto-refreshes every 5 minutes">
+            {lastRefreshed !== null ? `Updated ${relativeTime}` : "Auto-refresh: 5m"}
           </span>
+          <span className="w-px h-4 bg-white/[0.08]" />
           <button
             onClick={() => void handleRefresh()}
             disabled={refreshing}
-            className="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.03] hover:bg-white/[0.06] border border-white/[0.08] text-gray-300 rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {refreshing ? "Refreshing..." : "Refresh All"}
+            <span
+              className={`w-3 h-3 inline-block ${refreshing ? "animate-spin" : ""}`}
+              aria-hidden
+            >
+              ↻
+            </span>
+            {refreshing ? "Refreshing" : "Refresh"}
           </button>
         </div>
       </header>
 
       {/* Main content */}
-      <main className="max-w-6xl mx-auto px-6 py-6">
+      <main className="max-w-6xl mx-auto px-6 py-8">
         {hasAccounts ? (
-          <div className="space-y-6">
+          <div className="space-y-5">
             {/* Add form — compact when accounts exist */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+            <div className="bg-white/[0.02] border border-white/[0.05] rounded-lg p-4">
               <AddAccountForm onAccountAdded={handleAccountAdded} />
             </div>
 
             {/* Dashboard table */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg">
+            <div className="bg-white/[0.02] border border-white/[0.05] rounded-lg overflow-hidden">
               <DashboardTable
                 accounts={accounts}
                 onDelete={handleDelete}

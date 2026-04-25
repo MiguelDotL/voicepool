@@ -35,9 +35,9 @@ export default function AddAccountForm({ onAccountAdded }: Props) {
       <div className="flex-1 min-w-0">
         <label
           htmlFor="account-key"
-          className="block text-xs text-gray-400 mb-1"
+          className="block text-[11px] uppercase tracking-wider text-gray-500 mb-1.5"
         >
-          API Key
+          ElevenLabs API Key
         </label>
         <input
           id="account-key"
@@ -46,16 +46,16 @@ export default function AddAccountForm({ onAccountAdded }: Props) {
           onChange={(e) => setApiKey(e.target.value)}
           placeholder="sk_..."
           disabled={submitting}
-          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-gray-500 disabled:opacity-50"
+          className="w-full bg-white/[0.02] border border-white/[0.08] rounded-md px-3 py-2 text-sm text-gray-300 placeholder-gray-600 font-mono focus:outline-none focus:border-teal-300/30 focus:ring-1 focus:ring-teal-300/15 disabled:opacity-50 transition-colors"
         />
       </div>
 
       <button
         type="submit"
         disabled={submitting || !apiKey.trim()}
-        className="px-4 py-2 bg-gray-700 text-gray-200 text-sm rounded hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+        className="px-4 py-2 bg-teal-300/10 hover:bg-teal-300/15 border border-teal-300/20 text-teal-200/90 text-sm font-medium rounded-md disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
       >
-        {submitting ? "Adding..." : "Add"}
+        {submitting ? "Adding…" : "Add Account"}
       </button>
 
       {error && (

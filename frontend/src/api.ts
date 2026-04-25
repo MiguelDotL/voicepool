@@ -69,3 +69,4 @@ export async function refreshAccounts(): Promise<RefreshResponse> {
   const res = await fetch("/api/accounts/refresh", { method: "POST" });
   return handleResponse<RefreshResponse>(res);
 }
+

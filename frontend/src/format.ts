@@ -4,6 +4,16 @@ export function formatNumber(n: number): string {
   return numberFormatter.format(n);
 }
 
+export function formatCompact(n: number): string {
+  if (n < 1000) return String(n);
+  if (n < 1_000_000) {
+    const v = n / 1000;
+    return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")}K`;
+  }
+  const v = n / 1_000_000;
+  return `${v >= 100 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")}M`;
+}
+
 export function formatResetCountdown(unixTimestamp: number): string {
   const now = Date.now() / 1000;
   const diff = unixTimestamp - now;
@@ -24,6 +34,16 @@ export function formatResetCountdown(unixTimestamp: number): string {
   }
   const mins = Math.floor(diff / 60);
   return `${mins}m`;
+}
+
+// Reset is good news (credits refresh), so the column warms toward teal as the
+// reset approaches. Tuned for monthly-cadence resets.
+export function resetUrgencyClass(unixTimestamp: number): string {
+  const diff = unixTimestamp - Date.now() / 1000;
+  if (diff < 3 * 86400) return "text-teal-300/80"; // < 3 days — almost there
+  if (diff < 7 * 86400) return "text-teal-300/50"; // 3–7 days — getting close
+  if (diff < 14 * 86400) return "text-gray-300"; // 1–2 weeks — mid-cycle
+  return "text-gray-500"; // > 2 weeks — long wait
 }
 
 export function formatRelativeTime(isoOrMs: string | number): string {
