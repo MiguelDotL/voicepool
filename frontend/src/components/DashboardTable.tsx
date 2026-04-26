@@ -25,7 +25,7 @@ function sortValue(account: Account, key: SortKey): string | number {
   const u = account.usage;
   switch (key) {
     case "account":
-      return account.label.toLowerCase();
+      return account.id;
     case "usage":
       return u && u.character_limit > 0
         ? u.character_count / u.character_limit
@@ -39,7 +39,7 @@ function sortValue(account: Account, key: SortKey): string | number {
 
 export default function DashboardTable({ accounts, onDelete, onRename }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("account");
-  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const sorted = useMemo(() => {
     const copy = [...accounts];

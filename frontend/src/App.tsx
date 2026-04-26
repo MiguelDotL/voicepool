@@ -7,6 +7,7 @@ import {
   type Account,
 } from "./api";
 import { formatRelativeTime } from "./format";
+import { BranchIndicator } from "branch-beacon";
 import AddAccountForm from "./components/AddAccountForm";
 import DashboardTable from "./components/DashboardTable";
 import EmptyState from "./components/EmptyState";
@@ -123,6 +124,7 @@ function App() {
           <span className="text-[10px] font-mono text-cyan-300/40 uppercase tracking-wider hidden sm:inline">
             v0.1 · FLEET
           </span>
+          <BranchIndicator className="text-[10px] font-mono uppercase tracking-wider hidden md:inline-flex" />
         </div>
         <div className="flex items-center gap-3 text-[11px] font-mono uppercase tracking-wider">
           <div className="flex items-center gap-2 text-gray-500">
