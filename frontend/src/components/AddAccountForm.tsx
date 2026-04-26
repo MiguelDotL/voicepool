@@ -37,7 +37,7 @@ export default function AddAccountForm({ onAccountAdded }: Props) {
           htmlFor="account-key"
           className="block text-[10px] font-mono uppercase tracking-widest text-cyan-300/50 mb-2"
         >
-          ▸ API_KEY
+          ▸ EXISTING ELEVENLABS API KEY
         </label>
         <input
           id="account-key"
@@ -55,7 +55,7 @@ export default function AddAccountForm({ onAccountAdded }: Props) {
         disabled={submitting || !apiKey.trim()}
         className="group relative px-5 py-2 bg-cyan-300/[0.06] hover:bg-cyan-300/[0.12] border border-cyan-300/30 hover:border-cyan-300/60 text-cyan-100 text-xs font-mono font-medium uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
       >
-        {submitting ? "› TRANSMITTING" : "› DEPLOY"}
+        {submitting ? "› ATTACHING" : "› ATTACH"}
       </button>
 
       {error && (

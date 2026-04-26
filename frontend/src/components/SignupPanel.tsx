@@ -78,12 +78,20 @@ export default function SignupPanel({ onAccountAdded }: Props) {
     };
   }, [anyPending, refresh]);
 
+  // One-click provision: generate the email row, then immediately fire the
+  // headed Playwright launch. The Playwright spawn is async/202; if it fails,
+  // the row's RELAUNCH button is the recovery path.
   const handleGenerate = useCallback(async () => {
     setGenerating(true);
     setGenerateError(null);
     try {
       const fresh = await createSignup();
       setSignups((prev) => [fresh, ...prev]);
+      try {
+        await openSignupIncognito(fresh.id);
+      } catch (err) {
+        console.warn("auto-launch after generate failed:", err);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to generate";
       if (msg.toLowerCase().includes("not configured")) {
@@ -173,7 +181,7 @@ export default function SignupPanel({ onAccountAdded }: Props) {
 
   if (offline) {
     return (
-      <Panel label="ENROLL">
+      <Panel label="PROVISION NODE">
         <div className="px-4 py-3 text-[11px] font-mono uppercase tracking-widest text-rose-300/70">
           ▸ EMAIL AUTOMATION OFFLINE — set MAIL_DOMAIN + IMAP_* in .env
         </div>
@@ -182,13 +190,13 @@ export default function SignupPanel({ onAccountAdded }: Props) {
   }
 
   return (
-    <Panel label="ENROLL">
+    <Panel label="PROVISION NODE">
       <div className="p-4 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[10px] font-mono uppercase tracking-widest text-gray-500">
-            ▸ AUTO-DEPLOY ELEVENLABS NODES
-            {automationEnabled && (
-              <span className="ml-2 text-emerald-300/60">[AUTO MODE]</span>
+            ▸ AUTO-CREATE NEW ELEVENLABS ACCOUNT + ATTACH VOICE
+            {!automationEnabled && (
+              <span className="ml-2 text-rose-300/60">[MANUAL FALLBACK]</span>
             )}
           </p>
           <button
@@ -196,7 +204,7 @@ export default function SignupPanel({ onAccountAdded }: Props) {
             disabled={generating || autoEnrolling}
             className="px-3 py-1.5 bg-cyan-300/10 hover:bg-cyan-300/15 border border-cyan-300/20 hover:border-cyan-300/40 text-cyan-200/90 text-xs font-mono font-medium uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
-            {generating ? "› GENERATING" : "› GENERATE EMAIL"}
+            {generating ? "› DEPLOYING" : "› DEPLOY"}
           </button>
         </div>
 
@@ -344,11 +352,11 @@ function SignupRow({
             title="Opens a new Chrome incognito window pointed at EL signup"
             className={`px-3 py-1.5 border text-[11px] font-mono font-medium uppercase tracking-widest transition-colors ${flash === "url" ? "bg-emerald-300/[0.12] border-emerald-300/50 text-emerald-100" : "bg-cyan-300/[0.06] hover:bg-cyan-300/[0.12] border-cyan-300/25 hover:border-cyan-300/50 text-cyan-100"}`}
           >
-            {flash === "url" ? "✓ INCOG OPENED" : "› OPEN EL SIGNUP (INCOG) ↗"}
+            {flash === "url" ? "✓ RELAUNCHED" : "› RELAUNCH BROWSER ↗"}
           </button>
           <span className="inline-flex items-center gap-2 text-[10px] font-mono uppercase tracking-widest text-cyan-300/50">
             <span className="hud-blink w-1.5 h-1.5 bg-cyan-300/70" />
-            WATCHING INBOX
+            AWAITING SIGNUP
           </span>
         </div>
       )}

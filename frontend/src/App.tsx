@@ -159,13 +159,13 @@ function App() {
       <main className="max-w-6xl mx-auto px-6 py-8">
         {hasAccounts ? (
           <div className="space-y-5">
-            {/* Add form */}
-            <Panel label="ADD NODE">
+            {/* Provision a new EL account end-to-end (recommended) */}
+            <SignupPanel onAccountAdded={handleAccountAdded} />
+
+            {/* Attach an existing EL account by API key */}
+            <Panel label="IMPORT NODE">
               <AddAccountForm onAccountAdded={handleAccountAdded} />
             </Panel>
-
-            {/* Signup assistant */}
-            <SignupPanel onAccountAdded={handleAccountAdded} />
 
             {/* Dashboard table */}
             <Panel label="FLEET">
