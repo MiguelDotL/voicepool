@@ -55,6 +55,26 @@ async function main(): Promise<void> {
     });
   });
 
+  // Pure dev readout: current git branch. Returns { branch: null } on any
+  // failure (not a repo, git missing, timeout) — frontend hides the element
+  // entirely when branch is null.
+  app.get("/api/dev/git-branch", async (_req, res) => {
+    const { spawn } = await import("node:child_process");
+    const repoRoot = path.resolve(process.cwd(), "..");
+    const child = spawn("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd: repoRoot,
+      timeout: 2_000,
+    });
+    let out = "";
+    child.stdout?.on("data", (b: Buffer) => { out += b.toString(); });
+    child.on("close", (code) => {
+      if (code !== 0) { res.json({ branch: null }); return; }
+      const branch = out.trim();
+      res.json({ branch: branch || null });
+    });
+    child.on("error", () => { res.json({ branch: null }); });
+  });
+
   app.get("/api/health", (_req, res) => {
     const rows = query<{ c: number }>("SELECT COUNT(*) as c FROM accounts");
     const accounts = rows[0]?.c ?? 0;
@@ -77,8 +97,8 @@ async function main(): Promise<void> {
 
   startPolling();
 
-  process.on("SIGTERM", () => {
-    console.log("SIGTERM received. Shutting down gracefully...");
+  const gracefulShutdown = (signal: string) => {
+    console.log(`${signal} received. Shutting down gracefully...`);
     stopPolling();
     void imapDisconnect();
     void automationShutdown();
@@ -90,7 +110,9 @@ async function main(): Promise<void> {
       console.error("Forced shutdown after 30s timeout.");
       process.exit(1);
     }, 30_000).unref();
-  });
+  };
+  process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  process.on("SIGINT", () => gracefulShutdown("SIGINT"));
 }
 
 main().catch((err) => {
