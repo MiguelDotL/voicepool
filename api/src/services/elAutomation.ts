@@ -43,6 +43,11 @@ const queue: number[] = [];
 let workerActive = false;
 let cancelRequested = false;
 let activeContext: BrowserContext | null = null;
+// Pages opened by the interactive signup launcher, indexed by signupId.
+// Worker picks up the same page so there's ONE browser window per provision
+// (instead of two — one for the user's signup form, one for the worker).
+// Sharing the page also preserves session cookies, so worker can skip /sign-in.
+const interactivePages = new Map<number, Page>();
 
 export function isAutomationEnabled(): boolean {
   return (
@@ -85,10 +90,17 @@ async function processSignup(signupId: number): Promise<void> {
   const password = decrypt(row.password);
 
   setStatus(signupId, "automating", "starting");
-  const ctx = await openContext();
+  // Reuse the page the user signed up on — same browser, session cookies kept.
+  // Falls back to a fresh context if the interactive flow wasn't used (e.g.
+  // signup created via API directly).
+  const reused = interactivePages.get(signupId) ?? null;
+  const ctx: BrowserContext = reused ? reused.context() : await openContext();
   activeContext = ctx;
   try {
-    const page = await ctx.newPage();
+    const page = reused ?? (await ctx.newPage());
+    if (reused) {
+      console.log(`[worker ${signupId}] reusing interactive page`);
+    }
 
     // Hybrid flow: if the IMAP poller already wrote a verify link, the user
     // did the signup form manually in their real browser (avoiding hCaptcha).
@@ -137,6 +149,7 @@ async function processSignup(signupId: number): Promise<void> {
     );
   } finally {
     activeContext = null;
+    interactivePages.delete(signupId);
     await ctx.close().catch(() => { /* ignore */ });
   }
 }
@@ -304,14 +317,14 @@ async function grantEndpointTab(page: Page, endpoint: string, permission: "Acces
 // Strategy: only click the card if Continue is disabled, click Continue,
 // wait for content change, repeat up to N steps.
 async function skipOnboardingIfPresent(page: Page, email?: string): Promise<void> {
-  // EL shows a logo splash for ~3-5s before rendering the wizard. Wait for an
-  // actionable button to appear before treating "no Continue visible" as fatal.
-  await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => { /* ignore */ });
+  // EL shows a logo splash for ~3-5s before rendering the wizard. 6s covers
+  // the splash + a small buffer; longer waits just slow the happy path.
+  await page.waitForLoadState("networkidle", { timeout: 6_000 }).catch(() => { /* ignore */ });
   await page
     .locator("button")
     .filter({ hasText: /^(Continue|Next|Skip|Get started)$/ })
     .first()
-    .waitFor({ state: "visible", timeout: 15_000 })
+    .waitFor({ state: "visible", timeout: 6_000 })
     .catch(() => { /* fall through; loop will exit if still nothing */ });
 
   let safety = 0;
@@ -717,16 +730,17 @@ export async function openInteractiveSignup(signupId: number): Promise<void> {
   console.log(`[interactive ${signupId}] decrypting password`);
   const password = decrypt(row.password);
 
-  console.log(`[interactive ${signupId}] importing playwright`);
-  const { chromium } = await import("playwright");
-  console.log(`[interactive ${signupId}] launching headed chromium`);
-  const interactive = await chromium.launch({
-    headless: false,
-    args: ["--disable-blink-features=AutomationControlled"],
-  });
-  console.log(`[interactive ${signupId}] launched, opening page`);
-  const ctx = await interactive.newContext();
+  // Use the shared browser (single instance reused across interactive +
+  // worker). Worker picks up this exact page after IMAP catches verify, so
+  // there's only ever one window per provision and session cookies survive.
+  const ctx = await openContext();
   const page = await ctx.newPage();
+  interactivePages.set(signupId, page);
+
+  page.on("close", () => {
+    console.log(`[interactive ${signupId}] page closed by user`);
+    interactivePages.delete(signupId);
+  });
 
   try {
     await page.goto("https://elevenlabs.io/app/sign-up", { waitUntil: "domcontentloaded" });
@@ -738,16 +752,10 @@ export async function openInteractiveSignup(signupId: number): Promise<void> {
     await page.getByRole("button", { name: /^sign ?up$/i }).first().click();
 
     // If hCaptcha surfaces, the visible window lets the user solve it manually.
-    // Either way the browser stays open until the user closes it.
   } catch (err) {
     console.error(`[interactive signup ${signupId}] failed:`, err);
-    // Leave the browser open so the user can finish manually.
+    // Leave the page open so the user can finish manually.
   }
-
-  // Auto-cleanup when the window is closed by the user.
-  interactive.on("disconnected", () => {
-    console.log(`[interactive signup ${signupId}] browser closed`);
-  });
 }
 
 export async function shutdown(): Promise<void> {
