@@ -19,7 +19,7 @@ export interface AccountRow {
   created_at: string;
 }
 
-interface SnapshotRow {
+export interface SnapshotRow {
   character_count: number;
   character_limit: number;
   next_reset_unix: number;
@@ -28,7 +28,7 @@ interface SnapshotRow {
   fetched_at: string;
 }
 
-interface AccountWithUsage {
+export interface AccountWithUsage {
   id: number;
   label: string;
   created_at: string;
@@ -77,6 +77,40 @@ export function insertSnapshot(
   pruneOldSnapshots(accountId);
 }
 
+/**
+ * Validate an ElevenLabs API key, persist a new account row, and capture an
+ * initial usage snapshot. Throws ElevenLabsError on bad key.
+ * Used by both the POST /api/accounts route and the signups link-account flow.
+ */
+export async function createAccountFromKey(
+  apiKey: string,
+  label?: string
+): Promise<AccountWithUsage> {
+  const userInfo = await getUserInfo(apiKey);
+  const resolvedLabel = label?.trim() || userInfo.first_name || "Unnamed";
+
+  const accountId = run(
+    "INSERT INTO accounts (label, api_key) VALUES (?, ?)",
+    [resolvedLabel, encrypt(apiKey)]
+  );
+
+  const sub = userInfo.subscription;
+  insertSnapshot(accountId, {
+    character_count: sub.character_count,
+    character_limit: sub.character_limit,
+    next_reset_unix: sub.next_character_count_reset_unix,
+    tier: sub.tier,
+    status: sub.status,
+  });
+
+  return {
+    id: accountId,
+    label: resolvedLabel,
+    created_at: new Date().toISOString(),
+    usage: latestSnapshotForAccount(accountId),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // POST /api/accounts — Add a new account
 // ---------------------------------------------------------------------------
@@ -89,48 +123,16 @@ router.post("/", async (req: Request, res: Response): Promise<void> => {
     return;
   }
 
-  // Validate the key against ElevenLabs and fetch user info
-  let userInfo;
   try {
-    userInfo = await getUserInfo(apiKey);
+    const account = await createAccountFromKey(apiKey, label);
+    res.status(201).json(account);
   } catch (err) {
     if (err instanceof ElevenLabsError) {
       res.status(err.statusCode).json({ error: err.message });
       return;
     }
     res.status(502).json({ error: "Failed to reach ElevenLabs API" });
-    return;
   }
-
-  // Use provided label or fall back to first_name from ElevenLabs
-  const resolvedLabel = label?.trim() || userInfo.first_name || "Unnamed";
-
-  // Encrypt and store
-  const encryptedKey = encrypt(apiKey);
-  const accountId = run(
-    "INSERT INTO accounts (label, api_key) VALUES (?, ?)",
-    [resolvedLabel, encryptedKey]
-  );
-
-  const subscription = userInfo.subscription;
-
-  // Store initial usage snapshot
-  insertSnapshot(accountId, {
-    character_count: subscription.character_count,
-    character_limit: subscription.character_limit,
-    next_reset_unix: subscription.next_character_count_reset_unix,
-    tier: subscription.tier,
-    status: subscription.status,
-  });
-
-  const usage = latestSnapshotForAccount(accountId);
-
-  res.status(201).json({
-    id: accountId,
-    label: resolvedLabel,
-    created_at: new Date().toISOString(),
-    usage,
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -173,6 +175,30 @@ router.delete("/:id", (req: Request, res: Response): void => {
   }
 
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/accounts/:id — Rename an account
+// ---------------------------------------------------------------------------
+
+router.patch("/:id", (req: Request, res: Response): void => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: "Invalid account id" });
+    return;
+  }
+  const { label } = req.body as { label?: string };
+  const trimmed = label?.trim();
+  if (!trimmed) {
+    res.status(400).json({ error: "label is required" });
+    return;
+  }
+  const changes = runChanges("UPDATE accounts SET label = ? WHERE id = ?", [trimmed, id]);
+  if (changes === 0) {
+    res.status(404).json({ error: "Account not found" });
+    return;
+  }
+  res.json({ id, label: trimmed });
 });
 
 // ---------------------------------------------------------------------------

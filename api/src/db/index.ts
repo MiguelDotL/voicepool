@@ -78,6 +78,41 @@ export async function initDatabase(): Promise<void> {
 
   db.run(`DROP TABLE IF EXISTS mailboxes;`);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS signups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      verification_link TEXT,
+      account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      verified_at TEXT
+    );
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_signups_status ON signups(status);`);
+
+  // Automation columns. Added via ALTER for DBs that pre-date them.
+  const signupsCols = query<{ name: string }>("PRAGMA table_info(signups)");
+  const existingCols = new Set(signupsCols.map((c) => c.name));
+  if (!existingCols.has("password")) {
+    db.run("ALTER TABLE signups ADD COLUMN password TEXT");
+  }
+  if (!existingCols.has("automation_step")) {
+    db.run("ALTER TABLE signups ADD COLUMN automation_step TEXT");
+  }
+  if (!existingCols.has("automation_error")) {
+    db.run("ALTER TABLE signups ADD COLUMN automation_error TEXT");
+  }
+
+  // Crash-recovery sweep: rows stuck mid-automation from a prior process are
+  // unrecoverable; flip to failed so manual fallback can take over.
+  db.run(
+    `UPDATE signups
+       SET status = 'failed',
+           automation_error = COALESCE(automation_error, 'interrupted by server restart')
+     WHERE status = 'automating'`
+  );
+
   db.run("PRAGMA foreign_keys = ON;");
 
   save();

@@ -9,6 +9,10 @@ import { initDatabase, query } from "./db/index.js";
 import accountsRouter from "./routes/accounts.js";
 import ttsRouter from "./routes/tts.js";
 import voicesRouter from "./routes/voices.js";
+import signupsRouter from "./routes/signups.js";
+import { startPolling, stopPolling } from "./services/signups.js";
+import { disconnect as imapDisconnect } from "./services/imap.js";
+import { shutdown as automationShutdown, isAutomationEnabled } from "./services/elAutomation.js";
 
 const PORT = Number(process.env.PORT) || 3500;
 
@@ -42,6 +46,14 @@ async function main(): Promise<void> {
   app.use("/api/accounts", accountsRouter);
   app.use("/api/tts", ttsRouter);
   app.use("/api/voices", voicesRouter);
+  app.use("/api/signups", signupsRouter);
+
+  app.get("/api/config", (_req, res) => {
+    res.json({
+      mail_enabled: Boolean(process.env.MAIL_DOMAIN && process.env.IMAP_USER),
+      automation_enabled: isAutomationEnabled(),
+    });
+  });
 
   app.get("/api/health", (_req, res) => {
     const rows = query<{ c: number }>("SELECT COUNT(*) as c FROM accounts");
@@ -63,8 +75,13 @@ async function main(): Promise<void> {
     console.log(`Voicepool API listening on http://localhost:${PORT}`);
   });
 
+  startPolling();
+
   process.on("SIGTERM", () => {
     console.log("SIGTERM received. Shutting down gracefully...");
+    stopPolling();
+    void imapDisconnect();
+    void automationShutdown();
     server.close(() => {
       console.log("Server closed.");
       process.exit(0);

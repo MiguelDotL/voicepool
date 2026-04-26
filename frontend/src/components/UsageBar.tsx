@@ -3,26 +3,34 @@ interface Props {
   limit: number;
 }
 
+const SEGMENTS = 6;
+
 export default function UsageBar({ used, limit }: Props) {
   const remaining = limit - used;
-  const pct = limit > 0 ? (used / limit) * 100 : 0;
   const remainingPct = limit > 0 ? (remaining / limit) * 100 : 0;
+  const usedPct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  const filled = Math.min(SEGMENTS, Math.round((usedPct / 100) * SEGMENTS));
 
-  let barColor: string;
+  let onClass: string;
   if (remainingPct > 50) {
-    barColor = "bg-gradient-to-r from-teal-300/55 to-emerald-300/55";
+    onClass = "bg-cyan-300/80 shadow-[0_0_6px_rgba(103,232,249,0.5)]";
   } else if (remainingPct > 20) {
-    barColor = "bg-gradient-to-r from-amber-300/55 to-yellow-200/55";
+    onClass = "bg-amber-300/80 shadow-[0_0_6px_rgba(252,211,77,0.5)]";
   } else {
-    barColor = "bg-gradient-to-r from-rose-300/55 to-pink-300/55";
+    onClass = "bg-rose-300/56 shadow-[0_0_6px_rgba(253,164,175,0.36)]";
   }
+  const offClass = "bg-cyan-300/[0.05] border border-cyan-300/15";
 
   return (
-    <div className="w-full bg-white/[0.04] rounded-full h-1.5 overflow-hidden">
-      <div
-        className={`h-full rounded-full transition-all duration-500 ease-out ${barColor}`}
-        style={{ width: `${Math.min(pct, 100)}%` }}
-      />
+    <div className="flex gap-[3px]">
+      {Array.from({ length: SEGMENTS }).map((_, i) => (
+        <span
+          key={i}
+          className={`flex-1 h-2.5 transition-colors duration-300 ${
+            i < filled ? onClass : offClass
+          }`}
+        />
+      ))}
     </div>
   );
 }
