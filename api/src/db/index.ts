@@ -60,6 +60,59 @@ export async function initDatabase(): Promise<void> {
       ON usage_snapshots(fetched_at);
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS account_voices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      account_id INTEGER NOT NULL,
+      voice_name TEXT NOT NULL,
+      voice_id TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+      UNIQUE(account_id, voice_name)
+    );
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_account_voices_account_id ON account_voices(account_id);
+  `);
+
+  db.run(`DROP TABLE IF EXISTS mailboxes;`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS signups (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      verification_link TEXT,
+      account_id INTEGER REFERENCES accounts(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      verified_at TEXT
+    );
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_signups_status ON signups(status);`);
+
+  // Automation columns. Added via ALTER for DBs that pre-date them.
+  const signupsCols = query<{ name: string }>("PRAGMA table_info(signups)");
+  const existingCols = new Set(signupsCols.map((c) => c.name));
+  if (!existingCols.has("password")) {
+    db.run("ALTER TABLE signups ADD COLUMN password TEXT");
+  }
+  if (!existingCols.has("automation_step")) {
+    db.run("ALTER TABLE signups ADD COLUMN automation_step TEXT");
+  }
+  if (!existingCols.has("automation_error")) {
+    db.run("ALTER TABLE signups ADD COLUMN automation_error TEXT");
+  }
+
+  // Crash-recovery sweep: rows stuck mid-automation from a prior process are
+  // unrecoverable; flip to failed so manual fallback can take over.
+  db.run(
+    `UPDATE signups
+       SET status = 'failed',
+           automation_error = COALESCE(automation_error, 'interrupted by server restart')
+     WHERE status = 'automating'`
+  );
+
   db.run("PRAGMA foreign_keys = ON;");
 
   save();
@@ -71,9 +124,9 @@ export async function initDatabase(): Promise<void> {
  */
 export function run(sql: string, params: unknown[] = []): number {
   db.run(sql, params);
-  save();
-  // Get last insert rowid
+  // Get last insert rowid — read before save() so db.export() doesn't reset last_insert_rowid
   const result = db.exec("SELECT last_insert_rowid() as id");
+  save();
   return result.length > 0 ? (result[0].values[0][0] as number) : 0;
 }
 
@@ -82,8 +135,9 @@ export function run(sql: string, params: unknown[] = []): number {
  */
 export function runChanges(sql: string, params: unknown[] = []): number {
   db.run(sql, params);
-  save();
+  // Read changes() before save() for the same reason as run()
   const result = db.exec("SELECT changes() as c");
+  save();
   return result.length > 0 ? (result[0].values[0][0] as number) : 0;
 }
 
@@ -103,6 +157,19 @@ export function query<T = Record<string, unknown>>(
   }
   stmt.free();
   return rows;
+}
+
+export function pruneOldSnapshots(accountId: number): void {
+  db.run(
+    `DELETE FROM usage_snapshots
+     WHERE account_id = ?
+     AND fetched_at < datetime('now', '-30 days')
+     AND id NOT IN (
+       SELECT id FROM usage_snapshots WHERE account_id = ? ORDER BY fetched_at DESC LIMIT 1
+     )`,
+    [accountId, accountId]
+  );
+  save();
 }
 
 /**
