@@ -3,26 +3,34 @@ interface Props {
   limit: number;
 }
 
+const SEGMENTS = 6;
+
 export default function UsageBar({ used, limit }: Props) {
   const remaining = limit - used;
-  const pct = limit > 0 ? (used / limit) * 100 : 0;
   const remainingPct = limit > 0 ? (remaining / limit) * 100 : 0;
+  const usedPct = limit > 0 ? Math.min(100, (used / limit) * 100) : 0;
+  const filled = Math.min(SEGMENTS, Math.round((usedPct / 100) * SEGMENTS));
 
-  let barColor: string;
+  let onClass: string;
   if (remainingPct > 50) {
-    barColor = "bg-emerald-500";
+    onClass = "bg-cyan-300/80 shadow-[0_0_6px_rgba(103,232,249,0.5)]";
   } else if (remainingPct > 20) {
-    barColor = "bg-yellow-500";
+    onClass = "bg-amber-300/80 shadow-[0_0_6px_rgba(252,211,77,0.5)]";
   } else {
-    barColor = "bg-red-500";
+    onClass = "bg-rose-300/56 shadow-[0_0_6px_rgba(253,164,175,0.36)]";
   }
+  const offClass = "bg-cyan-300/[0.05] border border-cyan-300/15";
 
   return (
-    <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
-      <div
-        className={`h-full rounded-full transition-all duration-300 ${barColor}`}
-        style={{ width: `${Math.min(pct, 100)}%` }}
-      />
+    <div className="flex gap-[3px]">
+      {Array.from({ length: SEGMENTS }).map((_, i) => (
+        <span
+          key={i}
+          className={`flex-1 h-2.5 transition-colors duration-300 ${
+            i < filled ? onClass : offClass
+          }`}
+        />
+      ))}
     </div>
   );
 }

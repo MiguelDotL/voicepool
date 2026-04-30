@@ -2,13 +2,17 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   fetchAccounts,
   deleteAccount,
+  renameAccount,
   refreshAccounts,
   type Account,
 } from "./api";
 import { formatRelativeTime } from "./format";
+import { BranchIndicator } from "branch-beacon";
 import AddAccountForm from "./components/AddAccountForm";
 import DashboardTable from "./components/DashboardTable";
 import EmptyState from "./components/EmptyState";
+import Panel from "./components/Panel";
+import SignupPanel from "./components/SignupPanel";
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -90,58 +94,89 @@ function App() {
     }
   }, []);
 
+  const handleRename = useCallback(async (id: number, label: string) => {
+    await renameAccount(id, label);
+    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, label } : a)));
+  }, []);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-gray-300 flex items-center justify-center">
-        <span className="text-gray-500 text-sm">Loading...</span>
+      <div className="min-h-screen text-gray-400 flex items-center justify-center">
+        <span className="text-gray-500 text-xs font-mono uppercase tracking-widest">
+          [ initializing ]
+        </span>
       </div>
     );
   }
 
   const hasAccounts = accounts.length > 0;
+  const accountCount = accounts.length.toString().padStart(2, "0");
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-300">
+    <div className="min-h-screen text-gray-400">
       {/* Header */}
-      <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-100 tracking-tight">
-          voicepool
-        </h1>
-        <div className="flex items-center gap-4">
-          {lastRefreshed !== null && (
-            <span className="text-xs text-gray-500">
-              Refreshed {relativeTime}
-            </span>
-          )}
-          <span className="text-xs text-gray-600">
-            auto-refresh: 5m
+      <header className="border-b border-cyan-300/10 backdrop-blur supports-[backdrop-filter]:bg-[#0b0d11]/85 sticky top-0 z-20 px-6 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className="hud-blink w-1.5 h-1.5 bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.7)]" />
+          <h1 className="text-sm font-semibold text-gray-100 tracking-[0.2em] uppercase">
+            VOICEPOOL
+          </h1>
+          <span className="text-[10px] font-mono text-cyan-300/40 uppercase tracking-wider hidden sm:inline">
+            v0.1 · FLEET
           </span>
+          <BranchIndicator className="text-[10px] font-mono uppercase tracking-wider hidden md:inline-flex" />
+        </div>
+        <div className="flex items-center gap-3 text-[11px] font-mono uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-gray-500">
+            <span className="text-gray-600">[NODES]</span>
+            <span className="text-gray-300 tabular-nums">{accountCount}</span>
+          </div>
+          <span className="w-px h-4 bg-cyan-300/15" />
+          <span
+            className="text-gray-500"
+            title="Auto-refreshes every 5 minutes"
+          >
+            {lastRefreshed !== null
+              ? `SYNC · ${relativeTime.toUpperCase()}`
+              : "AUTO · 5M"}
+          </span>
+          <span className="w-px h-4 bg-cyan-300/15" />
           <button
             onClick={() => void handleRefresh()}
             disabled={refreshing}
-            className="px-3 py-1.5 text-xs bg-gray-800 text-gray-300 rounded hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-cyan-300/[0.04] hover:bg-cyan-300/10 border border-cyan-300/20 hover:border-cyan-300/40 text-cyan-200/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {refreshing ? "Refreshing..." : "Refresh All"}
+            <span
+              className={`inline-block ${refreshing ? "animate-spin" : ""}`}
+              aria-hidden
+            >
+              ↻
+            </span>
+            {refreshing ? "SYNCING" : "REFRESH"}
           </button>
         </div>
       </header>
 
       {/* Main content */}
-      <main className="max-w-6xl mx-auto px-6 py-6">
+      <main className="max-w-6xl mx-auto px-6 py-8">
         {hasAccounts ? (
-          <div className="space-y-6">
-            {/* Add form — compact when accounts exist */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
+          <div className="space-y-5">
+            {/* Provision a new EL account end-to-end (recommended) */}
+            <SignupPanel onAccountAdded={handleAccountAdded} />
+
+            {/* Attach an existing EL account by API key */}
+            <Panel label="IMPORT NODE">
               <AddAccountForm onAccountAdded={handleAccountAdded} />
-            </div>
+            </Panel>
 
             {/* Dashboard table */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg">
+            <Panel label="FLEET">
               <DashboardTable
                 accounts={accounts}
                 onDelete={handleDelete}
+                onRename={handleRename}
               />
-            </div>
+            </Panel>
           </div>
         ) : (
           <EmptyState onAccountAdded={handleAccountAdded} />

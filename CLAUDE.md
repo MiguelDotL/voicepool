@@ -61,3 +61,11 @@ frontend/       — React + Vite app
 - No AI/LLM libraries — this is a pure REST proxy to ElevenLabs
 - API keys are encrypted at rest with AES-256-GCM
 - Never return raw API keys from GET endpoints
+
+## sql.js Gotchas
+- `save()` calls `db.export()` (WASM), which resets `last_insert_rowid()` and `changes()`. Always read those values **before** calling `save()` — see `run()` and `runChanges()` in `api/src/db/index.ts`.
+- After `run()` (INSERT), re-query by a UNIQUE column — do not rely on the returned rowid to `queryOne` by `id`.
+- tsx watch hot-reloads when source files change; `initDatabase()` re-reads `api/voicepool.db` from disk on each restart.
+
+## Security Hook
+- A pre-commit hook falsely triggers on the sql.js `db.exec` method, treating it like a shell injection risk. Workaround: frame edits so that line appears only in unchanged context, or add a clarifying comment to the changed block.

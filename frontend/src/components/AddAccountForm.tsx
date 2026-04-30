@@ -31,36 +31,36 @@ export default function AddAccountForm({ onAccountAdded }: Props) {
   );
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-end gap-3">
+    <form onSubmit={handleSubmit} className="flex items-end gap-3 p-4">
       <div className="flex-1 min-w-0">
         <label
           htmlFor="account-key"
-          className="block text-xs text-gray-400 mb-1"
+          className="block text-[10px] font-mono uppercase tracking-widest text-cyan-300/50 mb-2"
         >
-          API Key
+          ▸ EXISTING ELEVENLABS API KEY
         </label>
         <input
           id="account-key"
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="sk_..."
+          placeholder="sk_••••••••••••"
           disabled={submitting}
-          className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-gray-500 disabled:opacity-50"
+          className="w-full bg-[#0b0d11] border border-cyan-300/15 px-3 py-2 text-sm text-gray-200 placeholder-gray-700 font-mono focus:outline-none focus:border-cyan-300/50 focus:ring-1 focus:ring-cyan-300/20 disabled:opacity-50 transition-colors"
         />
       </div>
 
       <button
         type="submit"
         disabled={submitting || !apiKey.trim()}
-        className="px-4 py-2 bg-gray-700 text-gray-200 text-sm rounded hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+        className="group relative px-5 py-2 bg-cyan-300/[0.06] hover:bg-cyan-300/[0.12] border border-cyan-300/30 hover:border-cyan-300/60 text-cyan-100 text-xs font-mono font-medium uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed transition-all whitespace-nowrap"
       >
-        {submitting ? "Adding..." : "Add"}
+        {submitting ? "› ATTACHING" : "› ATTACH"}
       </button>
 
       {error && (
-        <p className="text-red-400 text-xs ml-2 self-center whitespace-nowrap">
-          {error}
+        <p className="text-rose-300/80 text-[11px] font-mono uppercase tracking-wider ml-2 self-center whitespace-nowrap">
+          ✕ {error}
         </p>
       )}
     </form>
