@@ -1,46 +1,68 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Account } from "../api";
 import UsageBar from "./UsageBar";
-import { formatNumber, formatResetCountdown } from "../format";
+import { formatCompact, formatResetCountdown, resetUrgencyClass } from "../format";
 
 interface Props {
   account: Account;
   onDelete: (id: number) => void;
+  onRename: (id: number, label: string) => void | Promise<void>;
 }
 
-function tierBadgeClass(tier: string): string {
-  switch (tier.toLowerCase()) {
-    case "free":
-      return "bg-gray-700 text-gray-300";
-    case "starter":
-      return "bg-blue-900/60 text-blue-300";
-    case "creator":
-      return "bg-purple-900/60 text-purple-300";
-    case "pro":
-      return "bg-amber-900/60 text-amber-300";
-    default:
-      return "bg-gray-700 text-gray-300";
-  }
-}
-
-function statusBadgeClass(status: string): string {
-  switch (status.toLowerCase()) {
-    case "active":
-      return "bg-emerald-900/60 text-emerald-300";
-    case "trialing":
-      return "bg-blue-900/60 text-blue-300";
-    case "overdue":
-    case "past_due":
-      return "bg-red-900/60 text-red-300";
-    default:
-      return "bg-gray-700 text-gray-300";
-  }
-}
-
-export default function AccountRow({ account, onDelete }: Props) {
+export default function AccountRow({ account, onDelete, onRename }: Props) {
   const usage = account.usage;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(account.label);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commitRename = useCallback(async () => {
+    const next = draft.trim();
+    setEditing(false);
+    if (!next || next === account.label) {
+      setDraft(account.label);
+      return;
+    }
+    try {
+      await onRename(account.id, next);
+    } catch {
+      setDraft(account.label);
+    }
+  }, [draft, account.id, account.label, onRename]);
+
+  const cancelRename = useCallback(() => {
+    setDraft(account.label);
+    setEditing(false);
+  }, [account.label]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", escHandler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", escHandler);
+    };
+  }, [menuOpen]);
 
   const handleDelete = useCallback(() => {
+    setMenuOpen(false);
     if (window.confirm(`Delete account "${account.label}"?`)) {
       onDelete(account.id);
     }
@@ -49,71 +71,102 @@ export default function AccountRow({ account, onDelete }: Props) {
   const used = usage?.character_count ?? 0;
   const limit = usage?.character_limit ?? 0;
   const remaining = limit - used;
+  const pct = usage && limit > 0 ? (used / limit) * 100 : 0;
 
   return (
-    <tr className="border-b border-gray-800 hover:bg-gray-800/50 transition-colors">
-      {/* Label */}
-      <td className="py-3 px-4 text-sm text-gray-200 font-medium">
-        {account.label}
-      </td>
-
-      {/* Tier */}
-      <td className="py-3 px-4">
-        {usage && (
-          <span
-            className={`inline-block text-xs px-2 py-0.5 rounded font-medium ${tierBadgeClass(usage.tier)}`}
-          >
-            {usage.tier}
+    <tr className="group border-b border-cyan-300/[0.06] last:border-0 hover:bg-cyan-300/[0.02] transition-colors">
+      {/* Account: hex ID + label */}
+      <td className="py-3.5 px-4">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-mono text-cyan-300/40 tabular-nums">
+            {`#${account.id.toString(16).toUpperCase().padStart(3, "0")}`}
           </span>
-        )}
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={() => { void commitRename(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { e.preventDefault(); void commitRename(); }
+                else if (e.key === "Escape") { e.preventDefault(); cancelRename(); }
+              }}
+              className="text-sm text-gray-100 font-medium bg-cyan-300/[0.08] border border-cyan-300/40 px-1 py-0 outline-none focus:border-cyan-300/70 min-w-[200px]"
+            />
+          ) : (
+            <span
+              className="text-sm text-gray-100 font-medium cursor-text"
+              onDoubleClick={() => setEditing(true)}
+              title="Double-click to rename"
+            >
+              {account.label}
+            </span>
+          )}
+        </div>
       </td>
 
-      {/* Usage bar */}
-      <td className="py-3 px-4 min-w-[160px]">
+      {/* Usage: bar + compact characters */}
+      <td className="py-3.5 px-4 min-w-[240px]">
         {usage ? (
-          <UsageBar used={used} limit={limit} />
+          <div className="space-y-1.5">
+            <UsageBar used={used} limit={limit} />
+            <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-gray-500">
+              <span className="tabular-nums">
+                {formatCompact(used)} <span className="text-gray-600">/</span> {formatCompact(limit)}
+              </span>
+              <span className="text-cyan-300/70 tabular-nums">{pct.toFixed(0).padStart(2, "0")}%</span>
+            </div>
+          </div>
         ) : (
-          <span className="text-gray-500 text-xs">No data</span>
+          <span className="text-gray-600 text-[10px] font-mono uppercase tracking-widest">[ NO DATA ]</span>
         )}
-      </td>
-
-      {/* Characters */}
-      <td className="py-3 px-4 text-sm text-gray-300 whitespace-nowrap font-mono">
-        {usage
-          ? `${formatNumber(used)} / ${formatNumber(limit)}`
-          : "--"}
       </td>
 
       {/* Remaining */}
-      <td className="py-3 px-4 text-sm text-gray-400 whitespace-nowrap font-mono">
-        {usage ? `${formatNumber(remaining)} left` : "--"}
+      <td className="py-3.5 px-4 text-xs text-gray-200 whitespace-nowrap font-mono tabular-nums uppercase">
+        {usage ? formatCompact(remaining) : "—"}
       </td>
 
-      {/* Reset */}
-      <td className="py-3 px-4 text-sm text-gray-400 whitespace-nowrap">
-        {usage ? formatResetCountdown(usage.next_reset_unix) : "--"}
+      {/* Resets — color bucketed by urgency */}
+      <td
+        className={`py-3.5 px-4 text-xs whitespace-nowrap font-mono tabular-nums ${
+          usage ? resetUrgencyClass(usage.next_reset_unix) : "text-gray-500"
+        }`}
+      >
+        {usage ? formatResetCountdown(usage.next_reset_unix) : "—"}
       </td>
 
-      {/* Status */}
-      <td className="py-3 px-4">
-        {usage && (
-          <span
-            className={`inline-block text-xs px-2 py-0.5 rounded font-medium ${statusBadgeClass(usage.status)}`}
+      {/* Kebab menu — hidden until row hover */}
+      <td className="py-3.5 px-4 text-right">
+        <div className="relative inline-block" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen((v) => !v)}
+            className={`w-7 h-7 inline-flex items-center justify-center text-gray-500 hover:text-cyan-200 hover:bg-cyan-300/[0.06] border border-transparent hover:border-cyan-300/20 text-base leading-none transition-all ${
+              menuOpen
+                ? "opacity-100 bg-cyan-300/[0.06] text-cyan-200 border-cyan-300/30"
+                : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+            }`}
+            title="Node actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
           >
-            {usage.status}
-          </span>
-        )}
-      </td>
-
-      {/* Delete */}
-      <td className="py-3 px-4 text-right">
-        <button
-          onClick={handleDelete}
-          className="text-gray-500 hover:text-red-400 text-xs transition-colors"
-          title={`Delete ${account.label}`}
-        >
-          Delete
-        </button>
+            ⋮
+          </button>
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-0 mt-1 z-10 min-w-[160px] bg-[#0b0d11] border border-cyan-300/30 shadow-xl shadow-black/60 py-0.5"
+            >
+              <button
+                role="menuitem"
+                onClick={handleDelete}
+                className="w-full text-left text-[11px] font-mono uppercase tracking-widest px-3 py-2 text-rose-300/80 hover:bg-rose-300/10 hover:text-rose-200 transition-colors"
+              >
+                ▸ TERMINATE NODE
+              </button>
+            </div>
+          )}
+        </div>
       </td>
     </tr>
   );
